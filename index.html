@@ -80,9 +80,10 @@ const QS=[
  {k:'home2',i:'💍',t:'Où avez-vous fondé votre foyer ?'},
  {k:'holiday',i:'🏖️',t:'Quel lieu de vacances vous a marqué ?'},
  {k:'friends',i:'🤝',t:'Où retrouviez-vous vos amis ?'},
+ {k:'trip',i:'🧳',t:'Quels voyages avez-vous faits ?'},
  {k:'other',i:'⭐',t:'Un autre lieu important'}
 ];
-const S={places:[],media:[],patient:{},view:'list',sel:null,pick:null,pend:null};
+const S={places:[],media:[],people:[],psel:null,patient:{},view:'list',sel:null,pick:null,pend:null};
 let db=null,assets=null,author='';
 try{author=localStorage.getItem('mem_author')||''}catch(e){}
 const $=s=>document.querySelector(s);
@@ -107,6 +108,8 @@ function drawMarkers(){
     m.on('click',()=>{S.sel=p.id;S.view='detail';render()});
     m.addTo(layer);
   });
+  const tr=S.places.filter(p=>p.q==='trip').sort((a,b)=>(a.from||0)-(b.from||0));
+  if(tr.length>1)L.polyline(tr.map(p=>[p.lat,p.lng]),{color:'#ffb347',weight:2,dashArray:'6 8'}).addTo(layer);
 }
 function ageTxt(p){
   const b=parseInt(S.patient.birth);if(!b||!p.from)return '';
@@ -119,6 +122,7 @@ function render(){
   const P=$('#panel');
   $('#who').textContent=S.patient.name?'Les souvenirs de '+S.patient.name:'';
   const notice=db?'':'<div class="notice">Mode local : les souvenirs sont enregistrés sur cet appareil (dans ce navigateur), mais pas partagés avec les proches.</div>';
+  if(S.view==='people'||S.view==='pform'||S.view==='pdetail')return renderPeople(P);
   if(S.view==='form'){
     const q=qOf(S.pick);
     P.innerHTML=`<h2>${q.i} ${esc(q.t)}</h2><p class="muted">Lieu placé sur la carte. Racontez ce souvenir.</p>
@@ -136,7 +140,7 @@ function render(){
     <h2 style="margin-top:12px">${q.i} ${esc(p.title||q.t)}</h2>
     <div class="muted">${esc(q.t)}</div>
     <div class="muted">${esc(period(p))} ${ageTxt(p)?'· '+esc(ageTxt(p)):''}</div>
-    ${p.note?`<p>${esc(p.note)}</p>`:''}${yearsHtml(p)}
+    ${p.note?`<p>${esc(p.note)}</p>`:''}${yearsHtml(p)}${peopleChips(p)}
     <hr style="border:0;border-top:1px solid var(--line)">
     <b>Photos et vidéos (${ms.length})</b>
     <div class="gal">${ms.map(m=>{const u=m.url||('/_blob/'+m.assetId);return `<figure>${m.kind==='video'?`<video src="${esc(u)}" controls preload="metadata"></video>`:`<img src="${esc(u)}" loading="lazy" alt="">`}<figcaption>${esc(m.author||'Un proche')}</figcaption></figure>`}).join('')}</div>
@@ -147,7 +151,7 @@ function render(){
     return;
   }
   const done=new Set(S.places.map(p=>p.q)).size;
-  P.innerHTML=notice+`<h2>Le parcours de vie</h2>
+  P.innerHTML=tabs('list')+notice+`<h2>Le parcours de vie</h2>
   <div class="row"><div style="flex:2"><label>Prénom de la personne</label><input id="pn" value="${esc(S.patient.name||'')}"></div>
   <div style="flex:1"><label>Naissance (année)</label><input id="pb" type="number" inputmode="numeric" value="${esc(S.patient.birth||'')}"></div></div>
   <label>Pays où la personne a vécu (pour les faits nationaux de chaque année)</label><select id="pc"><option value="">— Monde seulement —</option><option value="tn"${S.patient.country==='tn'?' selected':''}>Tunisie</option><option value="fr"${S.patient.country==='fr'?' selected':''}>France</option></select>
@@ -163,6 +167,17 @@ $('#panel').addEventListener('click',async e=>{
   if(a==='place'){S.pick=b.dataset.k;S.view='list';document.body.classList.add('picking');render()}
   else if(a==='cancel'){S.pick=null;S.pend=null;S.view='list';document.body.classList.remove('picking');render()}
   else if(a==='back'){S.view='list';render()}
+  else if(a==='tab'){S.view=b.dataset.t;render()}
+  else if(a==='padd'){S.view='pform';render()}
+  else if(a==='popen'){S.psel=b.dataset.id;S.view='pdetail';render()}
+  else if(a==='psave'){
+    const d={first:$('#p_f').value.trim(),last:$('#p_l').value.trim(),rel:$('#p_r').value,from:parseInt($('#p_a').value)||null,to:parseInt($('#p_b').value)||null,placeId:$('#p_p').value||'',note:$('#p_n').value.trim(),ts:Date.now()};
+    if(!d.first&&!d.last){alert('Indiquez au moins un prénom ou un nom.');return}
+    let id;
+    try{if(db){id=(await db.collection('people').add(d)).id}else{id='l'+Date.now();S.people.push({id,...d});persist()}}
+    catch(err){alert('Enregistrement impossible : '+(err.message||err.code));return}
+    S.psel=id;S.view='pdetail';render();
+  }
   else if(a==='open'){S.sel=b.dataset.id;S.view='detail';const p=S.places.find(x=>x.id===S.sel);if(p)map.flyTo([p.lat,p.lng],Math.max(map.getZoom(),13));render()}
   else if(a==='save'){
     const d={q:S.pick,lat:S.pend.lat,lng:S.pend.lng,title:$('#f_t').value.trim(),from:parseInt($('#f_a').value)||null,to:parseInt($('#f_b').value)||null,note:$('#f_n').value.trim(),ts:Date.now()};
@@ -191,8 +206,8 @@ $('#panel').addEventListener('change',async e=>{
       st.textContent=`Envoi ${++n}/${files.length}…`;
       const kind=f.type.startsWith('video')?'video':'photo';
       try{
-        if(assets&&db){const r=await assets.upload(f);await db.collection('media').add({placeId:S.sel,assetId:r.id,kind,author,ts:Date.now()})}
-        else{S.media.push({id:'l'+Date.now()+n,placeId:S.sel,blob:f,url:URL.createObjectURL(f),kind,author,ts:Date.now()});persist();render()}
+        if(assets&&db){const r=await assets.upload(f);await db.collection('media').add({...tgt(),assetId:r.id,kind,author,ts:Date.now()})}
+        else{S.media.push({id:'l'+Date.now()+n,...tgt(),blob:f,url:URL.createObjectURL(f),kind,author,ts:Date.now()});persist();render()}
       }catch(err){st.textContent='Échec : '+(err.message||err.code||'erreur');return}
     }
     st.textContent='Envoi terminé ✓';
@@ -204,8 +219,8 @@ const IDB={
  async get(k){const d=await this.open();return new Promise(res=>{const q=d.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>res(undefined)})},
  async set(k,v){const d=await this.open();return new Promise((res,rej)=>{const t=d.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=res;t.onerror=()=>rej(t.error)})}
 };
-async function persist(){if(db)return;try{await IDB.set('places',S.places);await IDB.set('patient',S.patient);await IDB.set('media',S.media.map(({url,...m})=>m))}catch(e){}}
-async function loadLocal(){try{S.places=(await IDB.get('places'))||[];S.patient=(await IDB.get('patient'))||{};S.media=((await IDB.get('media'))||[]).map(m=>({...m,url:m.blob?URL.createObjectURL(m.blob):''}));drawMarkers();render()}catch(e){}}
+async function persist(){if(db)return;try{await IDB.set('places',S.places);await IDB.set('patient',S.patient);await IDB.set('people',S.people);await IDB.set('media',S.media.map(({url,...m})=>m))}catch(e){}}
+async function loadLocal(){try{S.places=(await IDB.get('places'))||[];S.patient=(await IDB.get('patient'))||{};S.people=(await IDB.get('people'))||[];S.media=((await IDB.get('media'))||[]).map(m=>({...m,url:m.blob?URL.createObjectURL(m.blob):''}));drawMarkers();render()}catch(e){}}
 /* ===== Faits de chaque année : [monde, Tunisie, France] ===== */
 const EV={
 1940:['Début de la bataille d’Angleterre ; l’Europe de l’Ouest est en guerre','Le protectorat français vit au rythme de la guerre et des restrictions','Appel du général de Gaulle le 18 juin, armistice et régime de Vichy'],
@@ -300,7 +315,36 @@ function yrsOf(p){const a=p.from||(p.q==='birth'?parseInt(S.patient.birth):0);if
 function yearTxt(y){const e=EV[y];if(!e)return'';const c={tn:'En Tunisie',fr:'En France'}[S.patient.country],n=nat(e);return `En ${y}. Dans le monde : ${e[0]}.`+(n&&c?` ${c} : ${n}.`:'')}
 function yearsHtml(p){const ys=yrsOf(p).filter(y=>EV[y]);if(!ys.length)return'';return '<div class="notice"><b>Dans l’air du temps</b><br>'+ys.map(y=>{const e=EV[y],n=nat(e);return '<b>'+y+'</b> · '+esc(e[0])+(n?' · '+esc(n):'')}).join('<br>')+'</div>'}
 function setYear(y){const e=EV[y],el=$('#cy');if(!el||!e)return;const n=nat(e);el.innerHTML='<b>'+y+'</b> · '+esc(e[0])+(n?' · '+esc(n):'')}
-function segs(p){const o=[{t:narr(p)}],ys=yrsOf(p);if(ys.some(y=>EV[y]))o.push({t:'Revenons un instant sur cette époque.'});ys.forEach(y=>{const t=yearTxt(y);if(t)o.push({t,y})});const tl=tail(p);if(tl)o.push({t:tl});return o}
+function segs(p){const o=[{t:narr(p)}],ys=yrsOf(p),pp=S.people.filter(x=>x.placeId===p.id);
+  if(pp.length)o.push({t:'Ici, vous avez connu '+pp.map(x=>pname(x)+(x.rel&&x.rel!=='Autre'?', votre '+x.rel.toLowerCase():'')).join(', puis ')+'. '+pp.map(x=>x.note||'').join(' ')});if(ys.some(y=>EV[y]))o.push({t:'Revenons un instant sur cette époque.'});ys.forEach(y=>{const t=yearTxt(y);if(t)o.push({t,y})});const tl=tail(p);if(tl)o.push({t:tl});return o}
+/* ===== Fiches des proches ===== */
+const REL=['Mari','Épouse','Fils','Fille','Père','Mère','Frère','Sœur','Grand-père','Grand-mère','Oncle','Tante','Cousin','Cousine','Ami','Amie','Collègue','Voisin','Voisine','Autre'];
+const pname=x=>[x.first,x.last].filter(Boolean).join(' ');
+const tgt=()=>S.view==='pdetail'?{personId:S.psel}:{placeId:S.sel};
+function tabs(cur){return `<div class="row" style="margin-bottom:12px"><button class="${cur==='list'?'pri':''}" data-a="tab" data-t="list" style="flex:1">🗺️ Parcours</button><button class="${cur==='people'?'pri':''}" data-a="tab" data-t="people" style="flex:1">👥 Proches (${S.people.length})</button></div>`}
+function peopleChips(p){const pp=S.people.filter(x=>x.placeId===p.id);return pp.length?'<div class="notice"><b>Personnes liées à ce lieu</b><br>'+pp.map(x=>`<span class="pl" data-a="popen" data-id="${x.id}">👤 ${esc(pname(x))}${x.rel?' · '+esc(x.rel):''}</span>`).join('')+'</div>':''}
+function galHtml(ms){return '<div class="gal">'+ms.map(m=>{const u=m.url||('/_blob/'+m.assetId);return `<figure>${m.kind==='video'?`<video src="${esc(u)}" controls preload="metadata"></video>`:`<img src="${esc(u)}" loading="lazy" alt="">`}<figcaption>${esc(m.author||'Un proche')}</figcaption></figure>`}).join('')+'</div>'}
+function renderPeople(P){
+  if(S.view==='pform'){
+    P.innerHTML=`<h2>Nouvelle fiche</h2><p class="muted">Un ami, un membre de la famille, un collègue… Chacun peut remplir sa propre fiche.</p>
+    <div class="row"><div style="flex:1"><label>Prénom</label><input id="p_f"></div><div style="flex:1"><label>Nom</label><input id="p_l"></div></div>
+    <label>Lien avec la personne</label><select id="p_r">${REL.map(r=>`<option>${r}</option>`).join('')}</select>
+    <div class="row"><div style="flex:1"><label>Époque : de (année)</label><input id="p_a" type="number" inputmode="numeric"></div><div style="flex:1"><label>à (année)</label><input id="p_b" type="number" inputmode="numeric"></div></div>
+    <label>Lieu lié (facultatif)</label><select id="p_p"><option value="">—</option>${S.places.map(p=>`<option value="${p.id}">${esc(p.title||qOf(p.q).t)}</option>`).join('')}</select>
+    <label>Souvenir en commun, anecdote</label><textarea id="p_n" rows="4"></textarea>
+    <div class="row" style="margin-top:12px"><button class="pri" data-a="psave">Enregistrer</button><button data-a="tab" data-t="people">Annuler</button></div>`;return}
+  if(S.view==='pdetail'){
+    const x=S.people.find(y=>y.id===S.psel);if(!x){S.view='people';return render()}
+    const pl=S.places.find(p=>p.id===x.placeId),ms=S.media.filter(m=>m.personId===x.id).sort((a,b)=>a.ts-b.ts),per=x.from?(x.to&&x.to!==x.from?`${x.from} – ${x.to}`:`${x.from}`):'',ag=ageTxt(x);
+    P.innerHTML=`<button data-a="tab" data-t="people">← Proches</button><h2 style="margin-top:12px">👤 ${esc(pname(x))}</h2>
+    <div class="muted">${esc(x.rel||'')}${per?' · '+esc(per):''}${ag?' · '+esc(ag):''}</div>
+    ${pl?`<span class="pl" data-a="open" data-id="${pl.id}">📍 ${esc(pl.title||qOf(pl.q).t)}</span>`:''}
+    ${x.note?`<p>${esc(x.note)}</p>`:''}
+    <hr style="border:0;border-top:1px solid var(--line)"><b>Photos et vidéos (${ms.length})</b>${galHtml(ms)}
+    <label>Votre prénom (affiché sous vos envois)</label><input id="au" value="${esc(author)}" placeholder="Ex. : Karim, ami du lycée">
+    <div style="margin-top:10px"><button class="pri" data-a="upload">📷 Ajouter photos / vidéos</button><input id="file" type="file" accept="image/*,video/*" multiple hidden></div><div id="up" class="muted" style="margin-top:6px"></div>`;return}
+  P.innerHTML=tabs('people')+`<button class="pri" data-a="padd" style="width:100%">+ Ajouter une fiche</button>`+(S.people.length?S.people.map(x=>{const m=S.media.find(m=>m.personId===x.id&&m.kind==='photo'),u=m?(m.url||'/_blob/'+m.assetId):'';return `<div class="q" data-a="popen" data-id="${x.id}" style="cursor:pointer"><div class="row">${u?`<img src="${esc(u)}" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover">`:'<div style="width:48px;height:48px;border-radius:50%;background:var(--chip);text-align:center;line-height:48px">👤</div>'}<div><b>${esc(pname(x))}</b><div class="muted">${esc(x.rel||'')}${x.from?' · '+esc(x.from):''}</div></div></div></div>`}).join(''):'<p class="muted" style="margin-top:12px">Aucune fiche pour l’instant. Ajoutez la première.</p>');
+}
 /* ===== Film des souvenirs ===== */
 let run=0,slide=null,frVoice=null,playing=false;
 const cap=$('#cap'),sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -310,14 +354,14 @@ function say(t){return new Promise(res=>{
   if(!('speechSynthesis' in window)){setTimeout(res,t.length*70);return}
   speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='fr-FR';u.rate=.85;u.pitch=1.05;if(frVoice)u.voice=frVoice;
   let d=false,to;const fin=()=>{if(!d){d=true;clearTimeout(to);res()}};u.onend=fin;u.onerror=fin;to=setTimeout(fin,Math.max(8000,t.length*140));speechSynthesis.speak(u)})}
-const BASE={birth:'C’est ici que vous êtes né',home1:'Voici la maison de votre enfance',primary:'Voici votre école primaire',college:'Voici votre collège',lycee:'Voici votre lycée',fac:'Ici, vous avez poursuivi vos études',work1:'Ici, vous avez commencé à travailler',work:'Ici, vous avez travaillé pendant de longues années',home2:'Ici, vous avez fondé votre foyer',holiday:'Un lieu de vacances qui vous a marqué',friends:'Ici, vous retrouviez vos amis',other:'Un lieu important pour vous'};
+const BASE={birth:'C’est ici que vous êtes né',home1:'Voici la maison de votre enfance',primary:'Voici votre école primaire',college:'Voici votre collège',lycee:'Voici votre lycée',fac:'Ici, vous avez poursuivi vos études',work1:'Ici, vous avez commencé à travailler',work:'Ici, vous avez travaillé pendant de longues années',home2:'Ici, vous avez fondé votre foyer',holiday:'Un lieu de vacances qui vous a marqué',friends:'Ici, vous retrouviez vos amis',trip:'Vous avez fait un voyage',other:'Un lieu important pour vous'};
 function narr(p){
   let s=(BASE[p.q]||BASE.other)+(p.title?', '+p.title:'')+'.';
   if(p.from){s+=` C’était ${p.to&&p.to!==p.from?'de '+p.from+' à '+p.to:'en '+p.from}.`;const a=ageTxt(p);if(a)s+=` Vous aviez alors ${a.replace('vers ','environ ').replace('de ','entre ').replace(' à ',' et ')}.`}
   return s}
 function tail(p){let s='';if(p.note)s+=p.note;if(S.media.some(m=>m.placeId===p.id))s+=' Regardez les images que vos proches ont gardées pour vous.';return s}
 function showCap(p){
-  const ms=S.media.filter(m=>m.placeId===p.id);
+  const ids=new Set(S.people.filter(x=>x.placeId===p.id).map(x=>x.id)),ms=S.media.filter(m=>m.placeId===p.id||ids.has(m.personId));
   cap.hidden=false;cap.innerHTML=`<div id="cm"></div><div><h3>${esc(p.title||qOf(p.q).t)}</h3><p>${esc(qOf(p.q).t)}${period(p)?' · '+esc(period(p)):''}</p><p id="cy" style="margin-top:6px"></p></div>`;
   clearInterval(slide);let i=0;
   const show=()=>{if(!ms.length){$('#cm').innerHTML='';return}const m=ms[i++%ms.length],u=m.url||('/_blob/'+m.assetId);$('#cm').innerHTML=m.kind==='video'?`<video src="${esc(u)}" autoplay muted loop playsinline></video>`:`<img src="${esc(u)}" alt="">`};
@@ -349,6 +393,7 @@ render();
     if(!db){loadLocal();return}
     db.collection('places').onSnapshot(s=>{S.places=s.docs.map(d=>({id:d.id,...d.data()}));drawMarkers();if(!/INPUT|TEXTAREA/.test(document.activeElement.tagName))render()});
     db.collection('media').onSnapshot(s=>{S.media=s.docs.map(d=>({id:d.id,...d.data()}));if(!/INPUT|TEXTAREA/.test(document.activeElement.tagName))render()});
+    db.collection('people').onSnapshot(s=>{S.people=s.docs.map(d=>({id:d.id,...d.data()}));if(!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))render()});
     db.doc('meta/patient').onSnapshot(s=>{S.patient=s.data()||{};if(!/INPUT|TEXTAREA/.test(document.activeElement.tagName))render()});
     render();
   }catch(e){loadLocal()}
