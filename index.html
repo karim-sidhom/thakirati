@@ -137,7 +137,7 @@ function render(){
   if(S.view==='form'){
     const q=qOf(S.pick);
     P.innerHTML=`<h2>${q.i} ${esc(q.t)}</h2><p class="muted">Lieu placé sur la carte. Racontez ce souvenir.</p>
-    <label>Nom du lieu</label><input id="f_t" placeholder="Ex. : Lycée Carnot, rue des Lilas…">
+    <label>Nom du lieu</label><input id="f_t" value="${esc(S.pt||'')}" placeholder="Ex. : Lycée Carnot, rue des Lilas…">
     <div class="row"><div style="flex:1"><label>De (année)</label><input id="f_a" type="number" inputmode="numeric"></div><div style="flex:1"><label>À (année)</label><input id="f_b" type="number" inputmode="numeric"></div></div>
     <label>Souvenir, anecdote, noms des personnes</label><textarea id="f_n" rows="4"></textarea>${ATT()}
     <div class="row" style="margin-top:12px"><button class="pri" data-a="save">Enregistrer</button><button data-a="cancel">Annuler</button></div>`;
@@ -151,7 +151,7 @@ function render(){
     <h2 style="margin-top:12px">${q.i} ${esc(p.title||q.t)}</h2>
     <div class="muted">${esc(q.t)}</div>
     <div class="muted">${esc(period(p))} ${ageTxt(p)?'· '+esc(ageTxt(p)):''}</div>
-    ${p.note?`<p>${esc(p.note)}</p>`:''}${yearsHtml(p)}${peopleChips(p)}
+    ${p.note?`<p>${esc(p.note)}</p>`:''}${yearsHtml(p)}${peopleChips(p)}${enrichHtml(p)}
     <hr style="border:0;border-top:1px solid var(--line)">
     <b>Photos et vidéos (${ms.length})</b>
     <div class="gal">${ms.map(m=>{const u=m.url||('/_blob/'+m.assetId);return `<figure data-a="lb" data-id="${m.id}" style="cursor:zoom-in">${m.kind==='video'?`<video src="${esc(u)}" preload="metadata" muted></video>`:`<img src="${esc(u)}" loading="lazy" alt="">`}<figcaption>${esc(m.author||'Un proche')}</figcaption></figure>`}).join('')}</div>
@@ -168,17 +168,38 @@ function render(){
   <label>Pays où la personne a vécu (pour les faits nationaux de chaque année)</label><select id="pc"><option value="">— Monde seulement —</option><option value="tn"${S.patient.country==='tn'?' selected':''}>Tunisie</option><option value="fr"${S.patient.country==='fr'?' selected':''}>France</option></select>
   <div class="bar"><i style="width:${Math.round(done/QS.length*100)}%"></i></div>
   <div class="muted" style="margin-bottom:6px">${done} question(s) sur ${QS.length} placée(s) sur la carte. Chaque réponse devient un point sur la carte, où les proches pourront ajouter leurs photos et vidéos.</div>
-  ${S.pick?'<div class="pick">Touchez la carte pour placer : '+esc(qOf(S.pick).t)+' <button data-a="cancel" style="margin-left:6px">Annuler</button></div>':''}
+  ${S.pick?'<div class="pick">Touchez la carte pour placer : '+esc(qOf(S.pick).t)+' <button data-a="cancel" style="margin-left:6px">Annuler</button></div><div class="row" style="margin-bottom:6px"><input id="gq" placeholder="…ou cherchez un lieu (ville, école, rue)"><button data-a="gsearch">🔍</button></div><div id="gres" class="muted"></div>':''}
   ${QS.map(q=>{const ps=S.places.filter(p=>p.q===q.k);return `<div class="q"><div class="top"><div class="lbl">${q.i} ${esc(q.t)}</div><button data-a="place" data-k="${q.k}">${ps.length?'+':'Placer'}</button></div>${ps.map(p=>`<span class="pl" data-a="open" data-id="${p.id}">${esc(p.title||'Lieu')}${S.media.filter(m=>m.placeId===p.id).length?' · '+S.media.filter(m=>m.placeId===p.id).length+' 📷':''}</span>`).join('')}</div>`}).join('')}`;
 }
 
 $('#panel').addEventListener('click',async e=>{
   const b=e.target.closest('[data-a]');if(!b)return;
   const a=b.dataset.a;
-  if(a==='place'){S.pick=b.dataset.k;S.view='list';document.body.classList.add('picking');render()}
+  if(a==='place'){S.pt='';S.pick=b.dataset.k;S.view='list';document.body.classList.add('picking');render()}
   else if(a==='cancel'){S.pick=null;S.pend=null;S.view='list';document.body.classList.remove('picking');render()}
   else if(a==='back'){S.view='list';render()}
   else if(a==='tab'){S.view=b.dataset.t;render()}
+  else if(a==='gsearch'){
+    const q=$('#gq').value.trim();if(!q)return;const box=$('#gres');box.textContent='Recherche…';
+    try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=fr&q='+encodeURIComponent(q));GR=await r.json();
+      box.innerHTML=GR.length?GR.map((x,i)=>`<div class="pl" data-a="gpick" data-i="${i}">📍 ${esc(x.display_name.slice(0,70))}</div>`).join(''):'Aucun résultat.'}
+    catch(err){box.textContent='Recherche indisponible (connexion internet nécessaire).'}
+  }
+  else if(a==='gpick'){const x=GR[+b.dataset.i];S.pend={lat:+x.lat,lng:+x.lon};S.pt=x.display_name.split(',')[0];S.view='form';document.body.classList.remove('picking');map.flyTo([+x.lat,+x.lon],15);render()}
+  else if(a==='wiki'){
+    const p=S.places.find(x=>x.id===S.sel);if(!p)return;const box=$('#wk');box.innerHTML='<span class="muted">Recherche en cours…</span>';
+    try{WK[p.id]=await wikiNear(p);box.innerHTML=wikiCards(p.id)}
+    catch(err){box.innerHTML='<span class="muted">Wikipédia est inaccessible (connexion internet nécessaire).</span>'}
+  }
+  else if(a==='wadd'){
+    const p=S.places.find(x=>x.id===S.sel),w=p&&(WK[p.id]||[])[+b.dataset.i];if(!w||w.added)return;
+    const info=((p.info?p.info+' ':'')+w.t+' : '+w.x).trim();
+    try{
+      if(db){await db.doc('places/'+p.id).update({info});if(w.img)await db.collection('media').add({placeId:p.id,url:w.img,kind:'photo',author:'Wikipédia',ts:Date.now()})}
+      else{p.info=info;if(w.img)S.media.push({id:'l'+Date.now(),placeId:p.id,url:w.img,kind:'photo',author:'Wikipédia',ts:Date.now()});persist()}
+      w.added=true;render();
+    }catch(err){alert('Ajout impossible : '+(err.message||err.code))}
+  }
   else if(a==='lb'){const l=(S.view==='pdetail'?S.media.filter(m=>m.personId===S.psel):S.media.filter(m=>m.placeId===S.sel)).sort((x,y)=>x.ts-y.ts);lbOpen(l,Math.max(0,l.findIndex(m=>m.id===b.dataset.id)),false)}
   else if(a==='padd'){S.view='pform';render()}
   else if(a==='popen'){S.psel=b.dataset.id;S.view='pdetail';render()}
@@ -209,6 +230,7 @@ $('#panel').addEventListener('click',async e=>{
     $('#file').click();
   }
 });
+$('#panel').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='gq'){e.preventDefault();document.querySelector('[data-a=gsearch]').click()}});
 $('#panel').addEventListener('change',async e=>{
   if(e.target.id==='pn'||e.target.id==='pb'||e.target.id==='pc'){
     S.patient={name:$('#pn').value.trim(),birth:$('#pb').value,country:$('#pc').value};
@@ -235,8 +257,8 @@ const IDB={
  async get(k){const d=await this.open();return new Promise(res=>{const q=d.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>res(undefined)})},
  async set(k,v){const d=await this.open();return new Promise((res,rej)=>{const t=d.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=res;t.onerror=()=>rej(t.error)})}
 };
-async function persist(){if(db)return;try{await IDB.set('places',S.places);await IDB.set('patient',S.patient);await IDB.set('people',S.people);await IDB.set('media',S.media.map(({url,...m})=>m))}catch(e){}}
-async function loadLocal(){try{S.places=(await IDB.get('places'))||[];S.patient=(await IDB.get('patient'))||{};S.people=(await IDB.get('people'))||[];S.media=((await IDB.get('media'))||[]).map(m=>({...m,url:m.blob?URL.createObjectURL(m.blob):''}));drawMarkers();render()}catch(e){}}
+async function persist(){if(db)return;try{await IDB.set('places',S.places);await IDB.set('patient',S.patient);await IDB.set('people',S.people);await IDB.set('media',S.media.map(m=>{if(!m.blob)return m;const{url,...r}=m;return r}))}catch(e){}}
+async function loadLocal(){try{S.places=(await IDB.get('places'))||[];S.patient=(await IDB.get('patient'))||{};S.people=(await IDB.get('people'))||[];S.media=((await IDB.get('media'))||[]).map(m=>({...m,url:m.blob?URL.createObjectURL(m.blob):(m.url||'')}));drawMarkers();render()}catch(e){}}
 /* ===== Faits de chaque année : [monde, Tunisie, France] ===== */
 const EV={
 1940:['Début de la bataille d’Angleterre ; l’Europe de l’Ouest est en guerre','Le protectorat français vit au rythme de la guerre et des restrictions','Appel du général de Gaulle le 18 juin, armistice et régime de Vichy'],
@@ -387,7 +409,7 @@ function narr(p){
   let s=(BASE[p.q]||BASE.other)+(p.title?', '+p.title:'')+'.';
   if(p.from){s+=` C’était ${p.to&&p.to!==p.from?'de '+p.from+' à '+p.to:'en '+p.from}.`;const a=ageTxt(p);if(a)s+=` Vous aviez alors ${a.replace('vers ','environ ').replace('de ','entre ').replace(' à ',' et ')}.`}
   return s}
-function tail(p){let s='';if(p.note)s+=p.note;if(S.media.some(m=>m.placeId===p.id))s+=' Regardez les images que vos proches ont gardées pour vous.';return s}
+function tail(p){let s='';if(p.note)s+=p.note;if(p.info)s+=' À proximité : '+p.info;if(S.media.some(m=>m.placeId===p.id))s+=' Regardez les images que vos proches ont gardées pour vous.';return s}
 function showCap(p){
   const ids=new Set(S.people.filter(x=>x.placeId===p.id).map(x=>x.id)),ms=S.media.filter(m=>m.placeId===p.id||ids.has(m.personId));
   cap.hidden=false;cap.innerHTML=`<div id="cm"></div><div><h3>${esc(p.title||qOf(p.q).t)}</h3><p>${esc(qOf(p.q).t)}${period(p)?' · '+esc(period(p)):''}</p><p id="cy" style="margin-top:6px"></p></div>`;
@@ -412,6 +434,30 @@ async function film(){
   await say('Voilà. Merci d’avoir voyagé avec moi dans vos souvenirs.');
   if(my===run)stopFilm();
 }
+/* ===== Enrichissement : Wikipédia, recherche de lieux, gares, vue satellite ===== */
+const ST={"Tozeur":[33.9246,8.1339],"Elouediane":[34.1524,8.2901],"Metlaoui":[34.332,8.3996],"Gafsa":[34.394,8.8012],"Sened":[34.465,9.0376],"Maknassy":[34.6009,9.5909],"Gabes":[33.8842,10.0994],"Ghraiba":[34.4982,10.2052],"Maharès":[34.5273,10.5019],"Skhira":[34.3016,10.0696],"Ghannouch":[33.9351,10.0656],"Zannouch":[34.4438,8.9293],"El Ksar":[34.3856,8.7883],"Dégache":[33.9828,8.2081],"Sfax":[34.74,10.7639],"Sakiet Ezzit":[34.7889,10.7604],"La Hencha":[34.838,10.7655],"El Jem":[35.2972,10.7133],"Kerker":[35.4153,10.7129],"Mahdia":[35.5008,11.0644],"Monastir":[35.758,10.8095],"Messadine":[35.7348,10.6051],"Sousse":[35.8285,10.6059],"Kalaâ Seghira":[35.8315,10.5664],"Kalaâ Kebira":[35.8723,10.5494],"Enfidha":[36.1381,10.3809],"Bouficha":[36.2587,10.4334],"Bir Bou Regba":[36.4055,10.5388],"Bouargoub":[36.5162,10.5618],"Grombalia":[36.5988,10.4959],"Borj Cedria":[36.7148,10.366],"Hammam Lif":[36.7304,10.3321],"Tunis":[36.7924,10.181],"Nabeul":[36.451,10.7351],"Hammamet":[36.406,10.6161],"Foundouk Jedid":[36.685,10.412],"Khanguet":[36.641,10.458],"Turki":[36.569,10.522],"Belli":[36.541,10.545],"Omar Khayem":[36.419,10.653],"M'Razga":[36.434,10.689],"Mannouba":[36.8101,10.0935],"Megrine Ryadh":[36.7802,10.1829],"Megrine":[36.7748,10.1996],"Sidi Rezig":[36.7693,10.2163],"Lycée Rades":[36.7639,10.2331],"Rades":[36.7581,10.2492],"Rades Meliane":[36.7527,10.2659],"Ez-Zahra":[36.7472,10.2825],"Lycée Ezzahra":[36.7415,10.2989],"Bou Kornine":[36.7359,10.3155],"Arret du Stade":[36.7254,10.3437],"Tahar Sfar":[36.7203,10.3554],"Hammam Chatt":[36.7153,10.3671],"Sousse Med.V":[35.8211,10.6342],"Sousse Sud":[35.8075,10.645],"Sousse Z.Ind":[35.794,10.658],"Sahline Ville":[35.782,10.672],"Sahline Sabkha":[35.771,10.685],"Les Hôtels":[35.76,10.699],"L'Aéroport Monastir":[35.758,10.755],"La Faculté":[35.772,10.825],"Monastir Z.Ind":[35.715,10.792],"Frina":[35.702,10.805],"Khniss-Bembla":[35.688,10.818],"K.Med Bennane":[35.675,10.832],"Bouhjar":[35.662,10.846],"Lamta":[35.651,10.86],"Sayada":[35.639,10.875],"Ksar Hellal Z.Ind":[35.628,10.89],"Ksar Hellal":[35.618,10.904],"Moknine Gribâa":[35.608,10.919],"Moknine":[35.598,10.933],"Moknine Z.Ind":[35.588,10.948],"Teboulba Z.Ind":[35.578,10.962],"Teboulba":[35.568,10.977],"Baghdadi":[35.552,10.995],"Sidi Messoud":[35.541,11.01],"Ezzahra":[35.53,11.025],"Mahdia Ezzahra":[35.519,11.04],"Borj El Arif":[35.508,11.055],"Selja":[34.25,8.36],"Tabeddit 1er arrêt":[34.205,8.325],"Tabeddit 2ème arrêt":[34.182,8.31],"Moulares":[34.485,8.278],"Redeyef":[34.3833,8.1667],"Magroun":[34.35,8.2167],"El Ayoun":[34.15,8.6833],"Jebel Jelloud":[36.785,10.168],"Bir Kassaa":[36.745,10.22],"Naassen":[36.7265,10.1832],"Khelidia":[36.68,10.12],"Oudna":[36.552,10.0489],"Cheylus":[36.735,9.696],"Bir M'Cherga":[36.696,9.647],"Depienne":[36.5683,9.9247],"Pont du Fahs":[36.66,9.6],"Bou Arada":[36.375,9.508],"El Aroussa":[36.383,9.436],"Sidi Ayed":[36.34,9.347],"Gaafour":[36.333,9.333],"El Akhouat":[36.256,9.19],"El Krib":[36.25,9.176],"Sidi Bou Rouis":[36.153,8.891],"Trika":[36.16,8.87],"Le Sers":[36.154,8.811],"Les Salines":[36.15,8.744],"Les Zouarines":[36.1833,8.7667],"Dahmani":[36.2167,8.8167],"Le Kef":[36.1666,8.704],"Ain Mesria":[35.86,8.54],"Fej et Tameur":[35.79,8.49],"Gouraïa":[35.81,8.52],"Oued Sarrath":[35.75,8.5833],"Kalaâ Khasba":[35.5333,8.4333],"Manouba":[36.8101,10.0935],"Jedeida":[36.8445,9.9194],"Tebourba":[36.8281,9.8487],"Borj Toum":[36.6622,9.5594],"Mejez El Bab":[36.6481,9.6094],"Oued Zarga":[36.7042,9.4074],"Sidi M'Himech":[36.7566,9.3526],"Beja":[36.7289,9.1857],"Mastouta":[36.608,9.0576],"Sidi S'mail":[36.6075,8.9483],"Bousalem":[36.6112,8.9667],"Ben Bechir":[36.612,8.783],"Jendouba":[36.5024,8.778],"Oued Meliz":[36.4544,8.6515],"Ghardimaou":[36.448,8.4376],"Souk Ahras":[36.4136,8.4071],"Annaba":[36.4411,8.4277],"Sidi Othman":[36.8475,9.9495],"Chaouat":[36.8562,9.9311],"Ain Ghelal":[37.0089,9.7465],"Mateur":[37.0361,9.6643],"Tinja":[37.1289,9.7435],"La Pecherie":[37.2507,9.8308],"Bizerte":[37.2664,9.8639],"Sayda Manoubia":[36.7932,10.1602],"Mellassine":[36.798,10.153],"Erraoudha":[36.808,10.132],"Le Bardo":[36.806,10.138],"Elbortal":[36.812,10.115],"Les Orangers":[36.819,10.08],"Gobaa":[36.825,10.04],"Gobaa Ville":[36.831,10.022],"Ennajah":[36.7938,10.1597],"Etayarane":[36.8059,10.1398],"Ezzouhour 2":[36.8111,10.1182],"Elhrayria":[36.8174,10.0918],"Bougatfa":[36.8219,10.0617],"BOU SALEM":[36.6112,8.9667],"BEN BACHIR":[36.612,8.783],"NASSEN":[36.7265,10.1832],"ENFIDA":[36.1381,10.3809],"MANNOUBA":[36.8101,10.0935],"Erriadh":[36.6995,10.4151],"Bir El Bey":[36.7103,10.3788],"Bir Aniba":[36.7954,10.1575],"Sousse Bab Jedid":[35.8231,10.6416],"Bekalta":[35.6152,10.9894],"Bou Arkoub":[36.5311,10.5516],"Mezzouna":[34.5774,9.8432],"Sousse Médina":[35.8313,10.6318],"Mnihla":[36.8956,10.1367]};
+let GR=[],WK={};
+function kmD(a,b,c,d){const t=x=>x*Math.PI/180,h=Math.sin(t(c-a)/2)**2+Math.cos(t(a))*Math.cos(t(c))*Math.sin(t(d-b)/2)**2;return 12742*Math.asin(Math.sqrt(h))}
+function nearStation(p){let b=null;for(const n in ST){const d=kmD(p.lat,p.lng,ST[n][0],ST[n][1]);if(!b||d<b.d)b={n,d}}return b&&b.d<30?b:null}
+function satUrl(p){const x=0.004,y=0.0026;return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${p.lng-x},${p.lat-y},${p.lng+x},${p.lat+y}&bboxSR=4326&imageSR=4326&size=640,420&format=jpg&f=image`}
+async function wikiNear(p){
+  const u='https://fr.wikipedia.org/w/api.php?action=query&generator=geosearch&ggscoord='+p.lat+'%7C'+p.lng+'&ggsradius=2500&ggslimit=6&prop=pageimages%7Cextracts&piprop=thumbnail&pithumbsize=500&exintro=1&explaintext=1&exsentences=2&format=json&origin=*';
+  const j=await (await fetch(u)).json();
+  return Object.values((j.query&&j.query.pages)||{}).sort((a,b)=>(a.index||0)-(b.index||0)).map(x=>({t:x.title,x:x.extract||'',img:(x.thumbnail&&x.thumbnail.source)||'',id:x.pageid}));
+}
+function wikiCards(pid){
+  const L=WK[pid]||[];if(!L.length)return '<span class="muted">Aucune page Wikipédia trouvée autour de ce lieu.</span>';
+  return '<b>Autour de ce lieu (Wikipédia)</b>'+L.map((w,i)=>`<div class="notice" style="display:flex;gap:8px;margin-top:8px">${w.img?`<img src="${esc(w.img)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:8px;flex:none" referrerpolicy="no-referrer">`:''}<div style="min-width:0"><b><a href="https://fr.wikipedia.org/?curid=${w.id}" target="_blank" rel="noopener" style="color:inherit">${esc(w.t)}</a></b><div>${esc(w.x)}</div>${w.added?'<span class="muted">✓ ajouté au souvenir</span>':`<button data-a="wadd" data-i="${i}" style="margin-top:6px">➕ Ajouter au souvenir</button>`}</div></div>`).join('');
+}
+function enrichHtml(p){
+  const ns=nearStation(p);
+  return `<hr style="border:0;border-top:1px solid var(--line)">
+  <img src="${satUrl(p)}" alt="Vue aérienne du lieu" style="width:100%;border-radius:10px" loading="lazy" onerror="this.remove()">
+  ${ns?`<div class="muted" style="margin-top:6px">🚆 Gare la plus proche : ${esc(ns.n)} (${ns.d.toFixed(1)} km)</div>`:''}
+  ${p.info?`<div class="notice" style="margin-top:8px"><b>Détails du lieu</b><br>${esc(p.info)}</div>`:''}
+  <div id="wk" style="margin-top:8px">${WK[p.id]?wikiCards(p.id):'<button data-a="wiki">📚 Enrichir avec Wikipédia (détails et photos)</button>'}</div>`;
+}
+
 /* ===== Visionneuse plein écran ===== */
 const LB={list:[],i:0,t:null,auto:false};
 function pMedia(p){const ids=new Set(S.people.filter(x=>x.placeId===p.id).map(x=>x.id));return S.media.filter(m=>m.placeId===p.id||ids.has(m.personId)).sort((a,b)=>a.ts-b.ts)}
