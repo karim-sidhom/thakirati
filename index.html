@@ -132,7 +132,7 @@ function render(){
     P.innerHTML=`<h2>${q.i} ${esc(q.t)}</h2><p class="muted">Lieu placé sur la carte. Racontez ce souvenir.</p>
     <label>Nom du lieu</label><input id="f_t" placeholder="Ex. : Lycée Carnot, rue des Lilas…">
     <div class="row"><div style="flex:1"><label>De (année)</label><input id="f_a" type="number" inputmode="numeric"></div><div style="flex:1"><label>À (année)</label><input id="f_b" type="number" inputmode="numeric"></div></div>
-    <label>Souvenir, anecdote, noms des personnes</label><textarea id="f_n" rows="4"></textarea>
+    <label>Souvenir, anecdote, noms des personnes</label><textarea id="f_n" rows="4"></textarea>${ATT()}
     <div class="row" style="margin-top:12px"><button class="pri" data-a="save">Enregistrer</button><button data-a="cancel">Annuler</button></div>`;
     return;
   }
@@ -180,6 +180,8 @@ $('#panel').addEventListener('click',async e=>{
     let id;
     try{if(db){id=(await db.collection('people').add(d)).id}else{id='l'+Date.now();S.people.push({id,...d});persist()}}
     catch(err){alert('Enregistrement impossible : '+(err.message||err.code));return}
+    const fl=$('#f_files')?[...$('#f_files').files]:[];
+    if(fl.length){b.disabled=true;b.textContent='Envoi des fichiers…';author=$('#f_au').value.trim()||author;try{localStorage.setItem('mem_author',author)}catch(e){}await attach(fl,{personId:id})}
     S.psel=id;S.view='pdetail';render();
   }
   else if(a==='open'){S.sel=b.dataset.id;S.view='detail';const p=S.places.find(x=>x.id===S.sel);if(p)map.flyTo([p.lat,p.lng],Math.max(map.getZoom(),13));render()}
@@ -190,6 +192,8 @@ $('#panel').addEventListener('click',async e=>{
       if(db){id=(await db.collection('places').add(d)).id}
       else{id='l'+Date.now();S.places.push({id,...d});drawMarkers();persist()}
     }catch(err){alert('Enregistrement impossible : '+(err.message||err.code));return}
+    const fl=$('#f_files')?[...$('#f_files').files]:[];
+    if(fl.length){b.disabled=true;b.textContent='Envoi des fichiers…';author=$('#f_au').value.trim()||author;try{localStorage.setItem('mem_author',author)}catch(e){}await attach(fl,{placeId:id})}
     S.sel=id;S.pick=null;S.pend=null;S.view='detail';map.flyTo([d.lat,d.lng],14);render();
   }
   else if(a==='upload'){
@@ -321,6 +325,18 @@ function yearsHtml(p){const ys=yrsOf(p).filter(y=>EV[y]);if(!ys.length)return'';
 function setYear(y){const e=EV[y],el=$('#cy');if(!el||!e)return;const n=nat(e);el.innerHTML='<b>'+y+'</b> · '+esc(e[0])+(n?' · '+esc(n):'')}
 function segs(p){const o=[{t:narr(p)}],ys=yrsOf(p),pp=S.people.filter(x=>x.placeId===p.id);
   if(pp.length)o.push({t:'Ici, vous avez connu '+pp.map(x=>pname(x)+(x.rel&&x.rel!=='Autre'?', votre '+x.rel.toLowerCase():'')).join(', puis ')+'. '+pp.map(x=>x.note||'').join(' ')});if(ys.some(y=>EV[y]))o.push({t:'Revenons un instant sur cette époque.'});ys.forEach(y=>{const t=yearTxt(y);if(t)o.push({t,y})});const tl=tail(p);if(tl)o.push({t:tl});return o}
+const ATT=()=>`<label>Photos et vidéos de ce souvenir (facultatif)</label><input id="f_files" type="file" accept="image/*,video/*" multiple><label>Votre prénom (affiché sous vos envois)</label><input id="f_au" value="${esc(author)}" placeholder="Ex. : Karim, ami du lycée"><div class="muted" style="margin-top:6px">Vous pourrez en ajouter d’autres plus tard.</div>`;
+async function attach(files,t){
+  if(db&&!assets){alert('Le dépôt de fichiers n’est pas disponible pour votre compte.');return false}
+  let n=0;
+  for(const f of files){
+    n++;const kind=f.type.startsWith('video')?'video':'photo';
+    try{
+      if(db){const r=await assets.upload(f);await db.collection('media').add({...t,assetId:r.id,kind,author,ts:Date.now()})}
+      else S.media.push({id:'l'+Date.now()+n,...t,blob:f,url:URL.createObjectURL(f),kind,author,ts:Date.now()});
+    }catch(err){alert('Envoi impossible : '+(err.message||err.code||'erreur'));return false}
+  }
+  if(!db)persist();return true}
 /* ===== Fiches des proches ===== */
 const REL=['Mari','Épouse','Fils','Fille','Père','Mère','Frère','Sœur','Grand-père','Grand-mère','Oncle','Tante','Cousin','Cousine','Ami','Amie','Collègue','Voisin','Voisine','Autre'];
 const pname=x=>[x.first,x.last].filter(Boolean).join(' ');
@@ -335,7 +351,7 @@ function renderPeople(P){
     <label>Lien avec la personne</label><select id="p_r">${REL.map(r=>`<option>${r}</option>`).join('')}</select>
     <div class="row"><div style="flex:1"><label>Époque : de (année)</label><input id="p_a" type="number" inputmode="numeric"></div><div style="flex:1"><label>à (année)</label><input id="p_b" type="number" inputmode="numeric"></div></div>
     <label>Lieu lié (facultatif)</label><select id="p_p"><option value="">—</option>${S.places.map(p=>`<option value="${p.id}">${esc(p.title||qOf(p.q).t)}</option>`).join('')}</select>
-    <label>Souvenir en commun, anecdote</label><textarea id="p_n" rows="4"></textarea>
+    <label>Souvenir en commun, anecdote</label><textarea id="p_n" rows="4"></textarea>${ATT()}
     <div class="row" style="margin-top:12px"><button class="pri" data-a="psave">Enregistrer</button><button data-a="tab" data-t="people">Annuler</button></div>`;return}
   if(S.view==='pdetail'){
     const x=S.people.find(y=>y.id===S.psel);if(!x){S.view='people';return render()}
