@@ -16,14 +16,20 @@ header{padding:10px 16px;border-bottom:1px solid var(--line);background:var(--su
 header h1{font-size:20px;margin:0}
 header span{color:var(--muted);font-size:14px;font-family:system-ui,sans-serif}
 main{flex:1;min-height:0;display:flex}
-#map{flex:1;min-width:0;background:var(--chip)}
+#wrap{flex:1;min-width:0;position:relative}#map{position:absolute;inset:0;background:var(--chip)}
+#ctl{position:absolute;top:10px;right:10px;z-index:1000;display:flex;gap:6px;flex-direction:column;align-items:flex-end;font-family:system-ui,sans-serif}
+#ctl button{box-shadow:0 1px 5px rgba(0,0,0,.4)}
+#cap{position:absolute;left:10px;right:10px;bottom:22px;z-index:1000;background:rgba(20,18,16,.8);color:#fff;border-radius:14px;padding:10px 14px;font-family:system-ui,sans-serif;display:flex;gap:12px;align-items:center}
+#cap[hidden]{display:none}
+#cap img,#cap video{width:120px;height:90px;object-fit:cover;border-radius:10px;display:block}
+#cap h3{margin:0;font:19px Georgia,serif}#cap p{margin:4px 0 0;font-size:14px;opacity:.85}
 #panel{width:390px;max-width:100%;overflow-y:auto;background:var(--surface);border-left:1px solid var(--line);padding:16px;font-family:system-ui,sans-serif;font-size:15px}
-@media (max-width:760px){main{flex-direction:column}#map{flex:0 0 42%}#panel{width:100%;flex:1;border-left:0;border-top:1px solid var(--line)}}
+@media (max-width:760px){main{flex-direction:column}#wrap{flex:0 0 42%}#cap img,#cap video{width:80px;height:60px}#panel{width:100%;flex:1;border-left:0;border-top:1px solid var(--line)}}
 h2{font-family:Georgia,serif;font-size:19px;margin:0 0 6px}
 .muted{color:var(--muted);font-size:13px}
 button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--chip);color:var(--text);border-radius:10px;padding:7px 12px}
 button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
-input,textarea{font:inherit;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text)}
+input,textarea,select{font:inherit;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text)}
 label{display:block;margin:10px 0 3px;font-size:13px;color:var(--muted)}
 .row{display:flex;gap:8px;align-items:center}
 .q{padding:10px 0;border-bottom:1px solid var(--line)}
@@ -36,7 +42,7 @@ label{display:block;margin:10px 0 3px;font-size:13px;color:var(--muted)}
 .gal img,.gal video{width:100%;display:block;max-height:180px;object-fit:cover}
 .gal figcaption{padding:4px 8px;font-size:12px;color:var(--muted)}
 .pick{background:var(--accent);color:#fff;padding:8px 12px;border-radius:10px;margin-bottom:10px}
-.mk{font-size:26px;text-shadow:0 1px 3px rgba(0,0,0,.4);text-align:center;line-height:30px}
+.mk{font-size:19px;background:rgba(255,255,255,.92);border-radius:50%;width:32px;height:32px;line-height:32px;text-align:center;box-shadow:0 1px 5px rgba(0,0,0,.5)}
 .notice{background:var(--chip);padding:8px 10px;border-radius:10px;margin-bottom:10px;font-size:13px}
 /* Leaflet minimal */
 .leaflet-pane,.leaflet-tile,.leaflet-marker-icon,.leaflet-tile-container,.leaflet-layer{position:absolute;left:0;top:0}
@@ -59,7 +65,7 @@ label{display:block;margin:10px 0 3px;font-size:13px;color:var(--muted)}
 </head>
 <body>
 <header><h1>🧭 Retrouver la mémoire</h1><span id="who"></span></header>
-<main><div id="map"></div><aside id="panel"></aside></main>
+<main><div id="wrap"><div id="map"></div><div id="ctl"><button class="pri" id="film">▶ Film des souvenirs</button><button id="sat">🗺️ Plan</button></div><div id="cap" hidden></div></div><aside id="panel"></aside></main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script>
 const QS=[
@@ -83,8 +89,11 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const qOf=k=>QS.find(q=>q.k===k)||QS[QS.length-1];
 
-const map=L.map('map',{zoomControl:true}).setView([40,5],4);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+const map=L.map('map',{zoomControl:true,maxZoom:19}).setView([40,5],4);
+const SAT=L.layerGroup([L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Imagerie © Esri'}),L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:19})]).addTo(map);
+const PLAN=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'});
+let sat=true;
+$('#sat').onclick=()=>{sat=!sat;if(sat){map.removeLayer(PLAN);SAT.addTo(map);$('#sat').textContent='🗺️ Plan'}else{map.removeLayer(SAT);PLAN.addTo(map);$('#sat').textContent='🛰️ Satellite'}};
 const layer=L.layerGroup().addTo(map);
 map.on('click',e=>{
   if(!S.pick)return;
@@ -127,7 +136,7 @@ function render(){
     <h2 style="margin-top:12px">${q.i} ${esc(p.title||q.t)}</h2>
     <div class="muted">${esc(q.t)}</div>
     <div class="muted">${esc(period(p))} ${ageTxt(p)?'· '+esc(ageTxt(p)):''}</div>
-    ${p.note?`<p>${esc(p.note)}</p>`:''}
+    ${p.note?`<p>${esc(p.note)}</p>`:''}${yearsHtml(p)}
     <hr style="border:0;border-top:1px solid var(--line)">
     <b>Photos et vidéos (${ms.length})</b>
     <div class="gal">${ms.map(m=>{const u=m.url||('/_blob/'+m.assetId);return `<figure>${m.kind==='video'?`<video src="${esc(u)}" controls preload="metadata"></video>`:`<img src="${esc(u)}" loading="lazy" alt="">`}<figcaption>${esc(m.author||'Un proche')}</figcaption></figure>`}).join('')}</div>
@@ -141,6 +150,7 @@ function render(){
   P.innerHTML=notice+`<h2>Le parcours de vie</h2>
   <div class="row"><div style="flex:2"><label>Prénom de la personne</label><input id="pn" value="${esc(S.patient.name||'')}"></div>
   <div style="flex:1"><label>Naissance (année)</label><input id="pb" type="number" inputmode="numeric" value="${esc(S.patient.birth||'')}"></div></div>
+  <label>Pays où la personne a vécu (pour les faits nationaux de chaque année)</label><select id="pc"><option value="">— Monde seulement —</option><option value="tn"${S.patient.country==='tn'?' selected':''}>Tunisie</option><option value="fr"${S.patient.country==='fr'?' selected':''}>France</option></select>
   <div class="bar"><i style="width:${Math.round(done/QS.length*100)}%"></i></div>
   <div class="muted" style="margin-bottom:6px">${done} question(s) sur ${QS.length} placée(s) sur la carte. Chaque réponse devient un point sur la carte, où les proches pourront ajouter leurs photos et vidéos.</div>
   ${S.pick?'<div class="pick">Touchez la carte pour placer : '+esc(qOf(S.pick).t)+' <button data-a="cancel" style="margin-left:6px">Annuler</button></div>':''}
@@ -169,8 +179,8 @@ $('#panel').addEventListener('click',async e=>{
   }
 });
 $('#panel').addEventListener('change',async e=>{
-  if(e.target.id==='pn'||e.target.id==='pb'){
-    S.patient={name:$('#pn').value.trim(),birth:$('#pb').value};
+  if(e.target.id==='pn'||e.target.id==='pb'||e.target.id==='pc'){
+    S.patient={name:$('#pn').value.trim(),birth:$('#pb').value,country:$('#pc').value};
     $('#who').textContent=S.patient.name?'Les souvenirs de '+S.patient.name:'';
     try{if(db)await db.doc('meta/patient').set(S.patient);else persist()}catch(err){}
   }
@@ -196,6 +206,141 @@ const IDB={
 };
 async function persist(){if(db)return;try{await IDB.set('places',S.places);await IDB.set('patient',S.patient);await IDB.set('media',S.media.map(({url,...m})=>m))}catch(e){}}
 async function loadLocal(){try{S.places=(await IDB.get('places'))||[];S.patient=(await IDB.get('patient'))||{};S.media=((await IDB.get('media'))||[]).map(m=>({...m,url:m.blob?URL.createObjectURL(m.blob):''}));drawMarkers();render()}catch(e){}}
+/* ===== Faits de chaque année : [monde, Tunisie, France] ===== */
+const EV={
+1940:['Début de la bataille d’Angleterre ; l’Europe de l’Ouest est en guerre','Le protectorat français vit au rythme de la guerre et des restrictions','Appel du général de Gaulle le 18 juin, armistice et régime de Vichy'],
+1941:['Attaque de Pearl Harbor ; l’Allemagne envahit l’Union soviétique','','Occupation, rationnement et tickets d’alimentation'],
+1942:['Bataille de Stalingrad et victoire alliée d’El-Alamein','Débarquement allié en Afrique du Nord ; les troupes allemandes occupent la Tunisie en novembre','Rafle du Vél’ d’Hiv en juillet et sabordage de la flotte à Toulon'],
+1943:['Capitulation allemande à Stalingrad ; débarquement allié en Sicile','Libération de la Tunisie par les Alliés en mai','Création du Conseil national de la Résistance'],
+1944:['Débarquement en Normandie le 6 juin','','Libération de Paris le 25 août ; les femmes obtiennent le droit de vote'],
+1945:['Fin de la Seconde Guerre mondiale ; création de l’ONU','Fin de la guerre et renouveau du mouvement national','Les Françaises votent pour la première fois ; création de la Sécurité sociale'],
+1946:['Verdicts du procès de Nuremberg ; début de la guerre froide','Naissance du syndicat UGTT, fondé par Farhat Hached','Naissance de la IVe République'],
+1947:['Indépendance de l’Inde ; plan Marshall','','Grandes grèves à l’automne'],
+1948:['Création de l’État d’Israël ; Déclaration universelle des droits de l’homme','',''],
+1949:['Création de l’OTAN ; proclamation de la République populaire de Chine','Retour de Habib Bourguiba à Tunis','Fin du rationnement du pain'],
+1950:['Début de la guerre de Corée','Formation du gouvernement Chenik, chargé de négocier avec la France','Plan Schuman, première étape de l’Europe'],
+1951:['Premier ordinateur commercial, l’UNIVAC','','Création de la CECA, ancêtre de l’Union européenne'],
+1952:['Élisabeth II devient reine ; première bombe H','Arrestation de Bourguiba, puis assassinat du syndicaliste Farhat Hached en décembre',''],
+1953:['Mort de Staline ; l’Everest est vaincu par Hillary et Tensing','',''],
+1954:['Accords de Genève sur l’Indochine','Discours de Carthage de Mendès France : promesse d’autonomie interne','Défaite de Diên Biên Phu, appel de l’abbé Pierre et début de la guerre d’Algérie'],
+1955:['Pacte de Varsovie ; ouverture de Disneyland','Accords d’autonomie interne signés en juin','Arrivée de la Citroën DS'],
+1956:['Crise de Suez ; insurrection de Budapest','Indépendance de la Tunisie le 20 mars ; Code du statut personnel en août','Indépendance de la Tunisie et du Maroc'],
+1957:['Lancement du satellite Spoutnik ; traité de Rome','La République est proclamée le 25 juillet ; Bourguiba devient président','Signature du traité de Rome, naissance du Marché commun'],
+1958:['Premier satellite américain ; Exposition universelle de Bruxelles','Création du dinar tunisien ; bombardement de Sakiet Sidi Youssef','Retour du général de Gaulle et naissance de la Ve République'],
+1959:['Révolution cubaine ; première sonde sur la Lune','Promulgation de la première Constitution de la Tunisie indépendante','De Gaulle devient président de la République'],
+1960:['Nombreuses indépendances africaines ; Kennedy est élu','','Premier essai nucléaire français dans le Sahara'],
+1961:['Gagarine, premier homme dans l’espace ; construction du mur de Berlin','Bataille de Bizerte en juillet','Putsch des généraux à Alger en avril'],
+1962:['Crise des missiles de Cuba ; ouverture du concile Vatican II','','Accords d’Évian et fin de la guerre d’Algérie'],
+1963:['Assassinat de Kennedy ; discours « I have a dream »','Évacuation de Bizerte par l’armée française en octobre','Traité de l’Élysée entre la France et l’Allemagne'],
+1964:['Jeux olympiques de Tokyo ; début de la Beatlemania','Nationalisation des terres agricoles des colons ; naissance du Parti socialiste destourien',''],
+1965:['Escalade de la guerre du Vietnam','Bourguiba prononce son discours de Jéricho sur la Palestine','De Gaulle réélu face à François Mitterrand'],
+1966:['L’Angleterre championne du monde de football ; Révolution culturelle en Chine','',''],
+1967:['Guerre des Six Jours ; première greffe du cœur par le docteur Barnard','Jeux méditerranéens à Tunis',''],
+1968:['Assassinat de Martin Luther King ; Printemps de Prague','','Mai 68 : étudiants et grèves générales'],
+1969:['Premiers pas de l’homme sur la Lune ; festival de Woodstock','Fin de la politique des coopératives agricoles','Départ de de Gaulle ; Georges Pompidou est élu'],
+1970:['Séparation des Beatles ; mission Apollo 13','','Mort du général de Gaulle en novembre'],
+1971:['Premier microprocesseur Intel ; guerre du Bangladesh','',''],
+1972:['Jeux olympiques de Munich ; visite de Nixon en Chine','',''],
+1973:['Guerre du Kippour et premier choc pétrolier','','Choc pétrolier et fin des Trente Glorieuses'],
+1974:['Démission de Richard Nixon après le Watergate','Projet d’union avec la Libye, annoncé à Djerba en janvier','Mort de Pompidou ; Giscard d’Estaing élu ; majorité à 18 ans'],
+1975:['Fin de la guerre du Vietnam','Bourguiba est proclamé président à vie','Promulgation de la loi Veil sur l’IVG'],
+1976:['Jeux de Montréal : note parfaite de Nadia Comăneci','',''],
+1977:['Sortie de Star Wars ; mort d’Elvis Presley','',''],
+1978:['Naissance de Louise Brown, premier bébé éprouvette ; élection de Jean-Paul II','Grève générale du 26 janvier ; la Tunisie bat le Mexique à la Coupe du monde',''],
+1979:['Révolution iranienne ; Margaret Thatcher Première ministre','Le siège de la Ligue arabe s’installe à Tunis',''],
+1980:['Assassinat de John Lennon ; Jeux de Moscou boycottés par plusieurs pays','Attaque de Gafsa en janvier',''],
+1981:['Premier vol de la navette spatiale ; premiers cas de sida identifiés','','François Mitterrand élu ; abolition de la peine de mort'],
+1982:['Guerre des Malouines ; sortie du film E.T.','Arrivée de l’OLP à Tunis après Beyrouth',''],
+1983:['Premiers téléphones portables commercialisés','Émeutes du pain à la fin de l’année',''],
+1984:['Jeux olympiques de Los Angeles ; catastrophe de Bhopal','Émeutes du pain en janvier',''],
+1985:['Gorbatchev prend la tête de l’URSS ; concert Live Aid','Raid israélien sur Hammam Chott en octobre',''],
+1986:['Catastrophe de Tchernobyl ; explosion de la navette Challenger','','Première cohabitation : Chirac Premier ministre'],
+1987:['La population mondiale atteint 5 milliards d’habitants','Le 7 novembre, Zine el-Abidine Ben Ali accède à la présidence',''],
+1988:['Jeux olympiques de Séoul','Signature du Pacte national','Mitterrand réélu'],
+1989:['Chute du mur de Berlin ; place Tiananmen','Naissance de l’Union du Maghreb arabe','Bicentenaire de la Révolution française'],
+1990:['Réunification allemande ; libération de Nelson Mandela','',''],
+1991:['Guerre du Golfe ; dissolution de l’URSS','',''],
+1992:['Jeux olympiques de Barcelone ; Sommet de la Terre à Rio','','Référendum sur le traité de Maastricht'],
+1993:['Naissance de l’Union européenne ; accords d’Oslo','',''],
+1994:['Fin de l’apartheid, Mandela président ; tunnel sous la Manche','La Tunisie accueille la Coupe d’Afrique des nations',''],
+1995:['Lancement de Windows 95','','Jacques Chirac élu président'],
+1996:['Naissance de la brebis Dolly ; Jeux d’Atlanta','La Tunisie finaliste de la Coupe d’Afrique des nations',''],
+1997:['Mort de la princesse Diana et de Mère Teresa','',''],
+1998:['Lancement de Google','','La France championne du monde de football'],
+1999:['Naissance de l’euro ; crainte du bug de l’an 2000','Première élection présidentielle pluraliste',''],
+2000:['Passage à l’an 2000 ; Jeux de Sydney','','Passage aux 35 heures'],
+2001:['Attentats du 11 septembre ; lancement de Wikipédia','',''],
+2002:['Pièces et billets en euros','Attentat de Djerba en avril','Passage à l’euro ; Chirac réélu face à Jean-Marie Le Pen'],
+2003:['Guerre d’Irak ; canicule en Europe','','Canicule de l’été'],
+2004:['Tsunami dans l’océan Indien ; lancement de Facebook','La Tunisie remporte la Coupe d’Afrique des nations',''],
+2005:['Mort de Jean-Paul II, élection de Benoît XVI ; ouragan Katrina','Sommet mondial sur la société de l’information à Tunis','Le non au référendum européen ; émeutes dans les banlieues'],
+2006:['Pluton n’est plus une planète ; lancement de Twitter','',''],
+2007:['Premier iPhone','','Nicolas Sarkozy élu président'],
+2008:['Crise financière mondiale ; Obama élu ; Jeux de Pékin','',''],
+2009:['Pandémie de grippe H1N1','',''],
+2010:['Séisme à Haïti ; lancement de l’iPad','Le 17 décembre, début de la révolution tunisienne',''],
+2011:['Printemps arabe ; catastrophe de Fukushima ; mort de Ben Laden','Le 14 janvier, départ de Ben Ali ; élection de l’Assemblée constituante en octobre',''],
+2012:['Jeux olympiques de Londres','','François Hollande élu'],
+2013:['Élection du pape François ; révélations de Snowden','Assassinats de Chokri Belaïd et Mohamed Brahmi',''],
+2014:['Coupe du monde au Brésil, gagnée par l’Allemagne','Nouvelle Constitution ; Béji Caïd Essebsi élu président',''],
+2015:['Accord de Paris sur le climat','Attaques du Bardo et de Sousse ; prix Nobel de la paix pour le Quartet du dialogue national','Attentats de Paris'],
+2016:['Vote du Brexit ; Donald Trump élu','',''],
+2017:['Mouvement #MeToo','','Emmanuel Macron élu président'],
+2018:['Coupe du monde de football en Russie ; Jeux d’hiver à PyeongChang','','Seconde étoile : la France championne du monde'],
+2019:['Première image d’un trou noir','Mort du président Essebsi ; élection de Kaïs Saïed','Incendie de Notre-Dame de Paris'],
+2020:['Pandémie de Covid-19','Premier confinement en mars','Confinement dès le 17 mars'],
+2021:['Campagnes de vaccination contre le Covid-19','Le 25 juillet, le président Saïed prend les pleins pouvoirs',''],
+2022:['Guerre en Ukraine ; mort de la reine Élisabeth II ; Coupe du monde au Qatar','Nouvelle Constitution adoptée par référendum en juillet','Emmanuel Macron réélu'],
+2023:['Séisme en Turquie et en Syrie ; essor de l’intelligence artificielle','',''],
+2024:['Jeux olympiques de Paris ; année d’élections dans de nombreux pays','Réélection de Kaïs Saïed en octobre','Jeux olympiques de Paris et réouverture de Notre-Dame'],
+2025:['Mort du pape François ; élection du pape Léon XIV','','']
+};
+const nat=e=>S.patient.country==='tn'?e[1]:S.patient.country==='fr'?e[2]:'';
+function yrsOf(p){const a=p.from||(p.q==='birth'?parseInt(S.patient.birth):0);if(!a)return[];const b=p.to&&p.to>a?p.to:a,n=b-a+1;return n<=6?Array.from({length:n},(_,i)=>a+i):Array.from({length:6},(_,i)=>Math.round(a+i*(b-a)/5))}
+function yearTxt(y){const e=EV[y];if(!e)return'';const c={tn:'En Tunisie',fr:'En France'}[S.patient.country],n=nat(e);return `En ${y}. Dans le monde : ${e[0]}.`+(n&&c?` ${c} : ${n}.`:'')}
+function yearsHtml(p){const ys=yrsOf(p).filter(y=>EV[y]);if(!ys.length)return'';return '<div class="notice"><b>Dans l’air du temps</b><br>'+ys.map(y=>{const e=EV[y],n=nat(e);return '<b>'+y+'</b> · '+esc(e[0])+(n?' · '+esc(n):'')}).join('<br>')+'</div>'}
+function setYear(y){const e=EV[y],el=$('#cy');if(!el||!e)return;const n=nat(e);el.innerHTML='<b>'+y+'</b> · '+esc(e[0])+(n?' · '+esc(n):'')}
+function segs(p){const o=[{t:narr(p)}],ys=yrsOf(p);if(ys.some(y=>EV[y]))o.push({t:'Revenons un instant sur cette époque.'});ys.forEach(y=>{const t=yearTxt(y);if(t)o.push({t,y})});const tl=tail(p);if(tl)o.push({t:tl});return o}
+/* ===== Film des souvenirs ===== */
+let run=0,slide=null,frVoice=null,playing=false;
+const cap=$('#cap'),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function pickVoice(){const v=(speechSynthesis.getVoices()||[]).filter(x=>(x.lang||'').toLowerCase().startsWith('fr'));frVoice=v.find(x=>/google|natural|am[eé]lie|audrey|marie|hortense|denise|eloise|julie/i.test(x.name))||v[0]||null}
+if('speechSynthesis' in window){pickVoice();speechSynthesis.onvoiceschanged=pickVoice}
+function say(t){return new Promise(res=>{
+  if(!('speechSynthesis' in window)){setTimeout(res,t.length*70);return}
+  speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='fr-FR';u.rate=.85;u.pitch=1.05;if(frVoice)u.voice=frVoice;
+  let d=false,to;const fin=()=>{if(!d){d=true;clearTimeout(to);res()}};u.onend=fin;u.onerror=fin;to=setTimeout(fin,Math.max(8000,t.length*140));speechSynthesis.speak(u)})}
+const BASE={birth:'C’est ici que vous êtes né',home1:'Voici la maison de votre enfance',primary:'Voici votre école primaire',college:'Voici votre collège',lycee:'Voici votre lycée',fac:'Ici, vous avez poursuivi vos études',work1:'Ici, vous avez commencé à travailler',work:'Ici, vous avez travaillé pendant de longues années',home2:'Ici, vous avez fondé votre foyer',holiday:'Un lieu de vacances qui vous a marqué',friends:'Ici, vous retrouviez vos amis',other:'Un lieu important pour vous'};
+function narr(p){
+  let s=(BASE[p.q]||BASE.other)+(p.title?', '+p.title:'')+'.';
+  if(p.from){s+=` C’était ${p.to&&p.to!==p.from?'de '+p.from+' à '+p.to:'en '+p.from}.`;const a=ageTxt(p);if(a)s+=` Vous aviez alors ${a.replace('vers ','environ ').replace('de ','entre ').replace(' à ',' et ')}.`}
+  return s}
+function tail(p){let s='';if(p.note)s+=p.note;if(S.media.some(m=>m.placeId===p.id))s+=' Regardez les images que vos proches ont gardées pour vous.';return s}
+function showCap(p){
+  const ms=S.media.filter(m=>m.placeId===p.id);
+  cap.hidden=false;cap.innerHTML=`<div id="cm"></div><div><h3>${esc(p.title||qOf(p.q).t)}</h3><p>${esc(qOf(p.q).t)}${period(p)?' · '+esc(period(p)):''}</p><p id="cy" style="margin-top:6px"></p></div>`;
+  clearInterval(slide);let i=0;
+  const show=()=>{if(!ms.length){$('#cm').innerHTML='';return}const m=ms[i++%ms.length],u=m.url||('/_blob/'+m.assetId);$('#cm').innerHTML=m.kind==='video'?`<video src="${esc(u)}" autoplay muted loop playsinline></video>`:`<img src="${esc(u)}" alt="">`};
+  show();if(ms.length>1)slide=setInterval(show,4500)}
+function setFilm(on){playing=on;$('#film').textContent=on?'⏹ Arrêter':'▶ Film des souvenirs';$('#film').classList.toggle('pri',!on)}
+function stopFilm(){run++;clearInterval(slide);cap.hidden=true;if('speechSynthesis' in window)speechSynthesis.cancel();setFilm(false)}
+async function film(){
+  if(!S.places.length){alert('Placez d’abord quelques lieux sur la carte (panneau de droite).');return}
+  const my=++run,k=p=>p.from||((parseInt(S.patient.birth)||1900)+QS.findIndex(q=>q.k===p.q)*4),list=[...S.places].sort((a,b)=>k(a)-k(b));
+  setFilm(true);S.pick=null;document.body.classList.remove('picking');
+  map.setView([list[0].lat,list[0].lng],3,{animate:false});
+  await say((S.patient.name?S.patient.name+', ':'')+'voici le fil de votre vie. Prenez votre temps.');
+  for(const p of list){
+    if(my!==run)return;
+    cap.hidden=true;map.flyTo([p.lat,p.lng],16,{duration:6});await sleep(6500);
+    if(my!==run)return;
+    showCap(p);for(const sg of segs(p)){if(my!==run)return;if(sg.y)setYear(sg.y);await say(sg.t);await sleep(600)}await sleep(900);
+  }
+  if(my!==run)return;
+  await say('Voilà. Merci d’avoir voyagé avec moi dans vos souvenirs.');
+  if(my===run)stopFilm();
+}
+$('#film').onclick=()=>playing?stopFilm():film();
 render();
 (async()=>{
   try{
