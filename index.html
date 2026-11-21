@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Retrouver la mémoire</title>
+<style>
+:root{--bg:#faf7f2;--surface:#fff;--text:#2b2622;--muted:#7a7068;--accent:#c2562d;--line:#e6ded3;--chip:#f3ece2;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1a18;--surface:#262320;--text:#f1ebe4;--muted:#a79d93;--accent:#ee8a5e;--line:#3a352f;--chip:#322e29;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1c1a18;--surface:#262320;--text:#f1ebe4;--muted:#a79d93;--accent:#ee8a5e;--line:#3a352f;--chip:#322e29;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font:16px/1.45 Georgia,'Times New Roman',serif;display:flex;flex-direction:column}
+header{padding:10px 16px;border-bottom:1px solid var(--line);background:var(--surface);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+header h1{font-size:20px;margin:0}
+header span{color:var(--muted);font-size:14px;font-family:system-ui,sans-serif}
+main{flex:1;min-height:0;display:flex}
+#map{flex:1;min-width:0;background:var(--chip)}
+#panel{width:390px;max-width:100%;overflow-y:auto;background:var(--surface);border-left:1px solid var(--line);padding:16px;font-family:system-ui,sans-serif;font-size:15px}
+@media (max-width:760px){main{flex-direction:column}#map{flex:0 0 42%}#panel{width:100%;flex:1;border-left:0;border-top:1px solid var(--line)}}
+h2{font-family:Georgia,serif;font-size:19px;margin:0 0 6px}
+.muted{color:var(--muted);font-size:13px}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--chip);color:var(--text);border-radius:10px;padding:7px 12px}
+button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+input,textarea{font:inherit;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text)}
+label{display:block;margin:10px 0 3px;font-size:13px;color:var(--muted)}
+.row{display:flex;gap:8px;align-items:center}
+.q{padding:10px 0;border-bottom:1px solid var(--line)}
+.q .top{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.q .lbl{flex:1}
+.pl{display:inline-block;margin:6px 6px 0 0;padding:3px 10px;border-radius:99px;background:var(--chip);font-size:13px;cursor:pointer}
+.bar{height:6px;background:var(--chip);border-radius:9px;margin:8px 0 12px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
+.gal{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.gal figure{margin:0;background:var(--chip);border-radius:10px;overflow:hidden}
+.gal img,.gal video{width:100%;display:block;max-height:180px;object-fit:cover}
+.gal figcaption{padding:4px 8px;font-size:12px;color:var(--muted)}
+.pick{background:var(--accent);color:#fff;padding:8px 12px;border-radius:10px;margin-bottom:10px}
+.mk{font-size:26px;text-shadow:0 1px 3px rgba(0,0,0,.4);text-align:center;line-height:30px}
+.notice{background:var(--chip);padding:8px 10px;border-radius:10px;margin-bottom:10px;font-size:13px}
+/* Leaflet minimal */
+.leaflet-pane,.leaflet-tile,.leaflet-marker-icon,.leaflet-tile-container,.leaflet-layer{position:absolute;left:0;top:0}
+.leaflet-container{overflow:hidden;position:relative;outline:0}
+.leaflet-tile,.leaflet-marker-icon{user-select:none;-webkit-user-drag:none}
+.leaflet-tile{visibility:hidden;max-width:none!important;max-height:none!important}.leaflet-tile-loaded{visibility:inherit}
+.leaflet-pane{z-index:400}.leaflet-tile-pane{z-index:200}.leaflet-overlay-pane{z-index:400}.leaflet-marker-pane{z-index:600}.leaflet-shadow-pane{z-index:500}.leaflet-tooltip-pane{z-index:650}.leaflet-popup-pane{z-index:700}
+.leaflet-control{position:relative;z-index:800;pointer-events:auto;float:left;clear:both}
+.leaflet-top,.leaflet-bottom{position:absolute;z-index:1000;pointer-events:none}.leaflet-top{top:0}.leaflet-bottom{bottom:0}.leaflet-left{left:0}.leaflet-right{right:0}
+.leaflet-top .leaflet-control{margin-top:10px}.leaflet-left .leaflet-control{margin-left:10px}.leaflet-right .leaflet-control{float:right;margin-right:0}
+.leaflet-zoom-animated{transform-origin:0 0}.leaflet-zoom-anim .leaflet-zoom-animated{transition:transform .25s cubic-bezier(0,0,.25,1)}
+.leaflet-fade-anim .leaflet-tile{transition:opacity .2s linear}
+.leaflet-bar{border-radius:10px;overflow:hidden;box-shadow:0 1px 5px rgba(0,0,0,.35)}
+.leaflet-bar a{display:block;width:34px;height:34px;line-height:34px;text-align:center;background:var(--surface);color:var(--text);text-decoration:none;font:bold 20px system-ui}
+.leaflet-bar a+a{border-top:1px solid var(--line)}
+.leaflet-control-attribution{background:var(--surface);color:var(--muted);font:11px system-ui;padding:0 5px}
+.leaflet-control-attribution a{color:var(--muted)}
+.leaflet-grab{cursor:grab}.picking .leaflet-grab,.picking .leaflet-container{cursor:crosshair}
+</style>
+</head>
+<body>
+<header><h1>🧭 Retrouver la mémoire</h1><span id="who"></span></header>
+<main><div id="map"></div><aside id="panel"></aside></main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+const QS=[
+ {k:'birth',i:'👶',t:'Où êtes-vous né(e) ?'},
+ {k:'home1',i:'🏠',t:'Quelle maison avez-vous habitée enfant ?'},
+ {k:'primary',i:'🎒',t:'Quelle école primaire avez-vous fréquentée ?'},
+ {k:'college',i:'📚',t:'Quel collège ?'},
+ {k:'lycee',i:'🏫',t:'Quel lycée ?'},
+ {k:'fac',i:'🎓',t:'Quelle fac ou formation après le lycée ?'},
+ {k:'work1',i:'💼',t:'Où était votre premier travail ?'},
+ {k:'work',i:'🏢',t:'Où avez-vous le plus travaillé ?'},
+ {k:'home2',i:'💍',t:'Où avez-vous fondé votre foyer ?'},
+ {k:'holiday',i:'🏖️',t:'Quel lieu de vacances vous a marqué ?'},
+ {k:'friends',i:'🤝',t:'Où retrouviez-vous vos amis ?'},
+ {k:'other',i:'⭐',t:'Un autre lieu important'}
+];
+const S={places:[],media:[],patient:{},view:'list',sel:null,pick:null,pend:null};
+let db=null,assets=null,author='';
+try{author=localStorage.getItem('mem_author')||''}catch(e){}
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const qOf=k=>QS.find(q=>q.k===k)||QS[QS.length-1];
+
+const map=L.map('map',{zoomControl:true}).setView([40,5],4);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+const layer=L.layerGroup().addTo(map);
+map.on('click',e=>{
+  if(!S.pick)return;
+  S.pend={lat:e.latlng.lat,lng:e.latlng.lng};S.view='form';document.body.classList.remove('picking');render();
+});
+
+function drawMarkers(){
+  layer.clearLayers();
+  S.places.forEach(p=>{
+    const m=L.marker([p.lat,p.lng],{icon:L.divIcon({className:'',html:'<div class="mk">'+qOf(p.q).i+'</div>',iconSize:[30,30],iconAnchor:[15,28]})});
+    m.on('click',()=>{S.sel=p.id;S.view='detail';render()});
+    m.addTo(layer);
+  });
+}
+function ageTxt(p){
+  const b=parseInt(S.patient.birth);if(!b||!p.from)return '';
+  const a=p.from-b,z=p.to?p.to-b:null;
+  return z&&z!==a?`de ${a} à ${z} ans`:`vers ${a} ans`;
+}
+function period(p){return p.from?(p.to&&p.to!==p.from?`${p.from} – ${p.to}`:`${p.from}`):''}
+
+function render(){
+  const P=$('#panel');
+  $('#who').textContent=S.patient.name?'Les souvenirs de '+S.patient.name:'';
+  const notice=db?'':'<div class="notice">Mode local : les souvenirs sont enregistrés sur cet appareil (dans ce navigateur), mais pas partagés avec les proches.</div>';
+  if(S.view==='form'){
+    const q=qOf(S.pick);
+    P.innerHTML=`<h2>${q.i} ${esc(q.t)}</h2><p class="muted">Lieu placé sur la carte. Racontez ce souvenir.</p>
+    <label>Nom du lieu</label><input id="f_t" placeholder="Ex. : Lycée Carnot, rue des Lilas…">
+    <div class="row"><div style="flex:1"><label>De (année)</label><input id="f_a" type="number" inputmode="numeric"></div><div style="flex:1"><label>À (année)</label><input id="f_b" type="number" inputmode="numeric"></div></div>
+    <label>Souvenir, anecdote, noms des personnes</label><textarea id="f_n" rows="4"></textarea>
+    <div class="row" style="margin-top:12px"><button class="pri" data-a="save">Enregistrer</button><button data-a="cancel">Annuler</button></div>`;
+    return;
+  }
+  if(S.view==='detail'){
+    const p=S.places.find(x=>x.id===S.sel);
+    if(!p){S.view='list';return render()}
+    const q=qOf(p.q),ms=S.media.filter(m=>m.placeId===p.id).sort((a,b)=>a.ts-b.ts);
+    P.innerHTML=`<button data-a="back">← Questionnaire</button>
+    <h2 style="margin-top:12px">${q.i} ${esc(p.title||q.t)}</h2>
+    <div class="muted">${esc(q.t)}</div>
+    <div class="muted">${esc(period(p))} ${ageTxt(p)?'· '+esc(ageTxt(p)):''}</div>
+    ${p.note?`<p>${esc(p.note)}</p>`:''}
+    <hr style="border:0;border-top:1px solid var(--line)">
+    <b>Photos et vidéos (${ms.length})</b>
+    <div class="gal">${ms.map(m=>{const u=m.url||('/_blob/'+m.assetId);return `<figure>${m.kind==='video'?`<video src="${esc(u)}" controls preload="metadata"></video>`:`<img src="${esc(u)}" loading="lazy" alt="">`}<figcaption>${esc(m.author||'Un proche')}</figcaption></figure>`}).join('')}</div>
+    <label>Votre prénom (affiché sous vos envois)</label><input id="au" value="${esc(author)}" placeholder="Ex. : Karim, ami du lycée">
+    <div style="margin-top:10px"><button class="pri" data-a="upload">📷 Ajouter photos / vidéos</button>
+    <input id="file" type="file" accept="image/*,video/*" multiple hidden></div>
+    <div id="up" class="muted" style="margin-top:6px"></div>`;
+    return;
+  }
+  const done=new Set(S.places.map(p=>p.q)).size;
+  P.innerHTML=notice+`<h2>Le parcours de vie</h2>
+  <div class="row"><div style="flex:2"><label>Prénom de la personne</label><input id="pn" value="${esc(S.patient.name||'')}"></div>
+  <div style="flex:1"><label>Naissance (année)</label><input id="pb" type="number" inputmode="numeric" value="${esc(S.patient.birth||'')}"></div></div>
+  <div class="bar"><i style="width:${Math.round(done/QS.length*100)}%"></i></div>
+  <div class="muted" style="margin-bottom:6px">${done} question(s) sur ${QS.length} placée(s) sur la carte. Chaque réponse devient un point sur la carte, où les proches pourront ajouter leurs photos et vidéos.</div>
+  ${S.pick?'<div class="pick">Touchez la carte pour placer : '+esc(qOf(S.pick).t)+' <button data-a="cancel" style="margin-left:6px">Annuler</button></div>':''}
+  ${QS.map(q=>{const ps=S.places.filter(p=>p.q===q.k);return `<div class="q"><div class="top"><div class="lbl">${q.i} ${esc(q.t)}</div><button data-a="place" data-k="${q.k}">${ps.length?'+':'Placer'}</button></div>${ps.map(p=>`<span class="pl" data-a="open" data-id="${p.id}">${esc(p.title||'Lieu')}${S.media.filter(m=>m.placeId===p.id).length?' · '+S.media.filter(m=>m.placeId===p.id).length+' 📷':''}</span>`).join('')}</div>`}).join('')}`;
+}
+
+$('#panel').addEventListener('click',async e=>{
+  const b=e.target.closest('[data-a]');if(!b)return;
+  const a=b.dataset.a;
+  if(a==='place'){S.pick=b.dataset.k;S.view='list';document.body.classList.add('picking');render()}
+  else if(a==='cancel'){S.pick=null;S.pend=null;S.view='list';document.body.classList.remove('picking');render()}
+  else if(a==='back'){S.view='list';render()}
+  else if(a==='open'){S.sel=b.dataset.id;S.view='detail';const p=S.places.find(x=>x.id===S.sel);if(p)map.flyTo([p.lat,p.lng],Math.max(map.getZoom(),13));render()}
+  else if(a==='save'){
+    const d={q:S.pick,lat:S.pend.lat,lng:S.pend.lng,title:$('#f_t').value.trim(),from:parseInt($('#f_a').value)||null,to:parseInt($('#f_b').value)||null,note:$('#f_n').value.trim(),ts:Date.now()};
+    let id;
+    try{
+      if(db){id=(await db.collection('places').add(d)).id}
+      else{id='l'+Date.now();S.places.push({id,...d});drawMarkers();persist()}
+    }catch(err){alert('Enregistrement impossible : '+(err.message||err.code));return}
+    S.sel=id;S.pick=null;S.pend=null;S.view='detail';map.flyTo([d.lat,d.lng],14);render();
+  }
+  else if(a==='upload'){
+    if(!assets&&db){$('#up').textContent='Le dépôt de fichiers n’est pas disponible pour votre compte.';return}
+    $('#file').click();
+  }
+});
+$('#panel').addEventListener('change',async e=>{
+  if(e.target.id==='pn'||e.target.id==='pb'){
+    S.patient={name:$('#pn').value.trim(),birth:$('#pb').value};
+    $('#who').textContent=S.patient.name?'Les souvenirs de '+S.patient.name:'';
+    try{if(db)await db.doc('meta/patient').set(S.patient);else persist()}catch(err){}
+  }
+  if(e.target.id==='au'){author=e.target.value.trim();try{localStorage.setItem('mem_author',author)}catch(err){}}
+  if(e.target.id==='file'){
+    const files=[...e.target.files],st=$('#up');let n=0;
+    for(const f of files){
+      st.textContent=`Envoi ${++n}/${files.length}…`;
+      const kind=f.type.startsWith('video')?'video':'photo';
+      try{
+        if(assets&&db){const r=await assets.upload(f);await db.collection('media').add({placeId:S.sel,assetId:r.id,kind,author,ts:Date.now()})}
+        else{S.media.push({id:'l'+Date.now()+n,placeId:S.sel,blob:f,url:URL.createObjectURL(f),kind,author,ts:Date.now()});persist();render()}
+      }catch(err){st.textContent='Échec : '+(err.message||err.code||'erreur');return}
+    }
+    st.textContent='Envoi terminé ✓';
+  }
+});
+
+const IDB={
+ open(){return new Promise((res,rej)=>{const r=indexedDB.open('memoire',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})},
+ async get(k){const d=await this.open();return new Promise(res=>{const q=d.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>res(undefined)})},
+ async set(k,v){const d=await this.open();return new Promise((res,rej)=>{const t=d.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=res;t.onerror=()=>rej(t.error)})}
+};
+async function persist(){if(db)return;try{await IDB.set('places',S.places);await IDB.set('patient',S.patient);await IDB.set('media',S.media.map(({url,...m})=>m))}catch(e){}}
+async function loadLocal(){try{S.places=(await IDB.get('places'))||[];S.patient=(await IDB.get('patient'))||{};S.media=((await IDB.get('media'))||[]).map(m=>({...m,url:m.blob?URL.createObjectURL(m.blob):''}));drawMarkers();render()}catch(e){}}
+render();
+(async()=>{
+  try{
+    if(!window.claude){loadLocal();return}
+    db=await claude.use('db');assets=await claude.use('assets');
+    if(!db){loadLocal();return}
+    db.collection('places').onSnapshot(s=>{S.places=s.docs.map(d=>({id:d.id,...d.data()}));drawMarkers();if(!/INPUT|TEXTAREA/.test(document.activeElement.tagName))render()});
+    db.collection('media').onSnapshot(s=>{S.media=s.docs.map(d=>({id:d.id,...d.data()}));if(!/INPUT|TEXTAREA/.test(document.activeElement.tagName))render()});
+    db.doc('meta/patient').onSnapshot(s=>{S.patient=s.data()||{};if(!/INPUT|TEXTAREA/.test(document.activeElement.tagName))render()});
+    render();
+  }catch(e){loadLocal()}
+})();
+</script>
+</body>
+</html>
